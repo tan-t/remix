@@ -38,63 +38,10 @@ export function createRequestHandler<X extends hono.Env>({
   return async (
     c: hono.Context<X>
   ) => {
-    const request = createRemixRequest(c.req.raw);
     const loadContext = await getLoadContext?.(c.req);
-
-    const response = await handleRequest(request, loadContext);
-
-    await sendRemixResponse(c, response);
+    const response = await handleRequest(c.req.raw, loadContext);
+    const newResponse = new Response(response.body, response);
+    newResponse.headers.set("X-Powered-By", "Hono");
+    return newResponse;
   };
-}
-
-export function createRemixHeaders(
-  requestHeaders: Request["headers"]
-): Headers {
-  const headers = new Headers();
-
-  for (let [key, values] of Object.entries(requestHeaders)) {
-    if (values) {
-      if (Array.isArray(values)) {
-        for (let value of values) {
-          headers.append(key, value);
-        }
-      } else {
-        headers.set(key, values);
-      }
-    }
-  }
-
-  return headers;
-}
-
-export function createRemixRequest(
-  req: Request
-): Request {
-  // req.hostname doesn't include port information so grab that from
-  // `X-Forwarded-Host` or `Host`
-  let [, hostnamePort] = req.headers.get("X-Forwarded-Host")?.split(":") ?? [];
-  let [, hostPort] = req.headers.get("host")?.split(":") ?? [];
-  let port = hostnamePort || hostPort;
-  // Use req.hostname here as it respects the "trust proxy" setting
-  const urlObject = new URL(req.url);
-  let resolvedHost = `${urlObject.hostname}${port ? `:${port}` : ""}`;
-  let url = new URL(`${resolvedHost}${req.url}`);
-
-  // Abort action/loaders once we can no longer write a response
-  let controller = new AbortController();
-
-  let init: RequestInit = {
-    method: req.method,
-    headers: createRemixHeaders(req.headers),
-    signal: controller.signal,
-  };
-
-  return new Request(url.href, init);
-}
-
-export async function sendRemixResponse(
-  ctx: hono.Context,
-  original: Response
-): Promise<void> {
-  ctx.res = original;
 }
